@@ -125,8 +125,9 @@ if ($Paquete) {
     Set-Content -LiteralPath (Join-Path $carpeta 'SHA256SUMS.txt') -Value $sumas -Encoding utf8
     $zip = Join-Path $dist "$nombre.zip"
     if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force }
-    # -Force incluye archivos que empiezan con punto (p. ej. Loader/.doorstop_version).
-    Get-ChildItem -LiteralPath $carpeta -Force | Compress-Archive -DestinationPath $zip -CompressionLevel Optimal
+    # ZipFile incluye también archivos que empiezan con punto (Loader/.doorstop_version) en cualquier sistema.
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    [IO.Compression.ZipFile]::CreateFromDirectory($carpeta, $zip, [IO.Compression.CompressionLevel]::Optimal, $false)
     Write-Host "Paquete: $zip" -ForegroundColor Green
     Write-Host "SHA-256: $((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash)"
 }
