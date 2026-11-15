@@ -1,1 +1,12 @@
+# Binarios de distribución: se publican en Releases, no en el repositorio
+*.rar
+*.zip
 YandereSimulatorUltimateTrainer.exe
+/YandereUltimate.Bridge.dll
+/dist/
+
+# Compilación
+bin/
+obj/
+*.user
+.vs/
