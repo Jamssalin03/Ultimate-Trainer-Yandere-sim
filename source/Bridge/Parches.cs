@@ -21,7 +21,7 @@ namespace YandereUltimate
             Grupo(h, c, advertir, "parche.proximidad", () => new[] { (Original("StudentScript", "Update"), Hm(typeof(ParcheProximidad), "Prefix"), (HarmonyMethod)null, Hm(typeof(ParcheProximidad), "Finalizer")) });
             Grupo(h, c, advertir, "parche.compra", () => new[] { (Original("ServicesScript", "Purchase"), Hm(typeof(ParcheCompra), "Prefix"), Hm(typeof(ParcheCompra), "Postfix"), (HarmonyMethod)null) });
             Grupo(h, c, advertir, "parche.vision", () =>
-                AccessTools.GetDeclaredMethods(AccessTools.TypeByName("StudentScript")).Where(m => m.Name == "CanSeeObject" && m.ReturnType == typeof(bool))
+                AccessTools.GetDeclaredMethods(Juego.Tipo("StudentScript")).Where(m => m.Name == "CanSeeObject" && m.ReturnType == typeof(bool))
                     .Select(m => ((MethodBase)m, Hm(typeof(ParcheVision), "Prefix"), (HarmonyMethod)null, (HarmonyMethod)null)).ToArray());
             Grupo(h, c, advertir, "parche.reacciones", () =>
                 Comun.Catalogo.Parches().Select(n => (Original("StudentScript", n), Hm(typeof(ParcheReacciones), "Prefix"), (HarmonyMethod)null, (HarmonyMethod)null)).ToArray());
@@ -33,7 +33,7 @@ namespace YandereUltimate
         }
 
         static MethodBase Original(string tipo, string metodo) =>
-            AccessTools.Method(AccessTools.TypeByName(tipo) ?? throw new MissingMemberException(tipo), metodo) ?? throw new MissingMemberException(tipo, metodo);
+            AccessTools.Method(Juego.Tipo(tipo) ?? throw new MissingMemberException(tipo), metodo) ?? throw new MissingMemberException(tipo, metodo);
         static HarmonyMethod Hm(Type t, string metodo) => new HarmonyMethod(AccessTools.Method(t, metodo));
 
         static void Grupo(Harmony h, Compatibilidad c, Action<string> advertir, string funcion, Func<(MethodBase Original, HarmonyMethod Prefijo, HarmonyMethod Postfijo, HarmonyMethod Finalizador)[]> objetivos)

@@ -42,9 +42,21 @@ namespace YandereUltimate
 
         // ---------- Búsqueda de referencias ----------
 
+        // AccessTools.TypeByName recorre todos los tipos cargados si el nombre no está calificado:
+        // se resuelve una sola vez por tipo (los tipos no cambian durante la ejecución).
+        static readonly Dictionary<string, Type> tipos = new Dictionary<string, Type>();
+        internal static Type Tipo(string nombre)
+        {
+            lock (tipos)
+            {
+                if (!tipos.TryGetValue(nombre, out var t)) tipos[nombre] = t = AccessTools.TypeByName(nombre);
+                return t;
+            }
+        }
+
         static Component Buscar(string tipo)
         {
-            var t = AccessTools.TypeByName(tipo);
+            var t = Tipo(tipo);
             if (t == null) return null;
             foreach (var o in Resources.FindObjectsOfTypeAll(t))
                 if (o is Component c && c.gameObject.scene.IsValid() && c.gameObject.scene.isLoaded) return c;

@@ -28,7 +28,7 @@ namespace YandereUltimate
 
         sealed class ResolutorAccessTools : IResolutor
         {
-            public Type Tipo(string nombre) => AccessTools.TypeByName(nombre.Replace('/', '+'));
+            public Type Tipo(string nombre) => Juego.Tipo(nombre.Replace('/', '+'));
             public FieldInfo Campo(Type tipo, string nombre) => AccessTools.Field(tipo, nombre);
             public IEnumerable<MethodBase> Metodos(Type tipo, string nombre)
             {
