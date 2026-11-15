@@ -22,17 +22,17 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Código de main (commit del merge)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ env.DESTINO }}
 
       - name: Scripts de publicación
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           path: ci
           sparse-checkout: .github
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 8.0.x
 
@@ -44,6 +44,7 @@ jobs:
         run: |
           gh release view "v$env:VERSION" --repo $env:GITHUB_REPOSITORY *> $null
           "si=$([int]($LASTEXITCODE -eq 0))" >> $env:GITHUB_OUTPUT
+          exit 0   # «no existe» devuelve 1: no es un error de este paso
 
       - name: Ensamblados del juego (sólo Managed, por rangos HTTP)
         if: steps.existe.outputs.si == '0'
