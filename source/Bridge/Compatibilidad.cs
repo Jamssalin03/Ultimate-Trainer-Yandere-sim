@@ -71,8 +71,9 @@ namespace YandereUltimate
 
         void Recalcular()
         {
-            if (Verificada && funciones.Count > 0) Estado = ModoVerificada;
-            else Estado = funciones.Any(f => f.Disponible && f.Def.Visible) ? NoVerificada : Incompatible;
+            // Sin ninguna función visible disponible no hay nada que hacer, aunque la huella sea conocida.
+            if (!funciones.Any(f => f.Disponible && f.Def.Visible)) Estado = Incompatible;
+            else Estado = Verificada ? ModoVerificada : NoVerificada;
         }
 
         public bool Disponible(string id) => funciones.Any(f => f.Id == id && f.Disponible);

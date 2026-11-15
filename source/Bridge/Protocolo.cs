@@ -1,3 +1,4 @@
+#nullable disable
 // Lógica del protocolo sin dependencias de Unity: se compila en el complemento y en las pruebas.
 using System;
 using System.Collections.Concurrent;
