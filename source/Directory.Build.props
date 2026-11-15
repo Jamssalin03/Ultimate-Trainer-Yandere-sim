@@ -1,1 +1,12 @@
-<Project><PropertyGroup><GameDir Condition="'$(GameDir)'==''">C:\Users\jansa\Downloads\YandereSimLauncher\YandereSimulator</GameDir><LoaderDir Condition="'$(LoaderDir)'==''">$(MSBuildThisFileDirectory)..\Loader</LoaderDir><BaseIntermediateOutputPath>$(TEMP)\ys-ultimate\build\$(MSBuildProjectName)\obj\</BaseIntermediateOutputPath><BaseOutputPath>$(TEMP)\ys-ultimate\build\$(MSBuildProjectName)\bin\</BaseOutputPath></PropertyGroup></Project>
+<Project>
+  <PropertyGroup>
+    <!-- Sin rutas fijas: GameDir se pasa con -p:GameDir=... (Compilar.ps1 lo detecta automáticamente). -->
+    <LoaderDir Condition="'$(LoaderDir)'==''">$(MSBuildThisFileDirectory)..\Loader</LoaderDir>
+    <YsTemp>$([System.IO.Path]::Combine($([System.IO.Path]::GetTempPath()), 'ys-ultimate', 'build', '$(MSBuildProjectName)'))</YsTemp>
+    <BaseIntermediateOutputPath>$(YsTemp)\obj\</BaseIntermediateOutputPath>
+    <BaseOutputPath>$(YsTemp)\bin\</BaseOutputPath>
+    <Product>Yandere Simulator Ultimate Trainer</Product>
+    <Copyright>Proyecto independiente y no oficial</Copyright>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+</Project>
