@@ -1,5 +1,95 @@
 # Registro de implementación y pruebas
 
+## Versión 1.1.0 (15 de noviembre de 2026)
+
+Entorno de esta ronda: contenedor Linux x64 **sin Windows y sin el juego
+instalado**. La build actual se obtuvo del servidor oficial
+(`yanderesimulator.com/dl/latest.zip`, `version.txt` = **532**), extrayendo sólo
+`YandereSimulator_Data/Managed` por rangos HTTP. No se ejecutó el juego ni se
+tocaron partidas guardadas. Por eso las pruebas dentro del juego quedan
+**pendientes** y se marcan así abajo; nada de esta tabla las da por buenas.
+
+### Build detectada
+
+| Dato | Valor |
+|---|---|
+| Build | 532 (`version.txt` del servidor oficial) |
+| Fecha | 31/10/2026 (fecha de `Assembly-CSharp.dll` en el paquete) |
+| Unity | 6000.2.8f1 (cabecera de `globalgamemanagers`) |
+| Runtime | Mono x64 (`MonoBleedingEdge`, sin `GameAssembly.dll`) |
+| SHA-256 `Assembly-CSharp.dll` | `E06B2209AA75DDA4EC6EE15E927566FD02F91B1BBC01A34908082D559CEB4F2C` |
+
+### Comprobado automáticamente
+
+| Prueba | Resultado |
+|---|---|
+| `Compilar.ps1 -Juego … -Paquete` (PowerShell 7) contra los ensamblados de la 532 | Correcto: 0 errores, **0 advertencias** (`-warnaserror`, compilación limpia) |
+| Inspector: referencias del complemento resueltas contra la 532 | **105/105** presentes (además de las de UnityEngine), 0 sin declarar en el catálogo |
+| Catálogo evaluado contra la 532 | **47/47** funciones disponibles |
+| Pruebas xUnit (`source/Pruebas`) | **52/52** correctas |
+| Plugin real con Mono 6.8 + HarmonyX de BepInEx: `Compatibilidad.Evaluar` (AccessTools) en la 532 | `verificada`, build 532, 0 funciones desactivadas |
+| Ídem + `Parches.Aplicar` | **21/21** métodos parcheados sin errores |
+| Build futura simulada (Mono.Cecil: `ClockScript.TimeSpeed` renombrado, `CanSeeObject` renombrado, `InventoryScript.Money` float→double) | `no_verificada`; se desactivan exactamente 9 funciones con su motivo; 18 parches aplicados; el resto activo |
+| Paquete `.zip` | Generado con `SHA256SUMS.txt` (ver README) |
+
+### Interfaz probada con Wine + simulador
+
+La aplicación publicada se ejecutó con Wine 9 sobre Xvfb, conectada a
+`source/Simulador` (proceso que imita al juego con el complemento y usa el mismo
+`Protocolo.cs`). Valida la interfaz y el protocolo, **no** los efectos en el juego.
+
+| Caso | Resultado |
+|---|---|
+| Estados: Conectando (juego cerrado), Conectado · build verificada, Conectado · build no verificada, Incompatible (protocolo distinto), Desconectado | Correcto |
+| Aviso de build no verificada y lista de funciones desactivadas con motivo (Ajustes › Compatibilidad, tarjetas deshabilitadas) | Correcto |
+| Reputación: escribir 42 + Enter → `set` validado → «Actual: 42»; deslizador sincronizado | Correcto |
+| Buscador de NPC (Ctrl+F, «basu» → 2 resultados), selección y «Amistad: 100» | Correcto |
+| Interruptor «Personajes estúpidos» | Correcto (`toggle` enviado y reflejado) |
+| Ctrl+1…8, Ctrl+R (Restaurar todo), Ctrl+D (desconectar), Ctrl+T (tema claro) | Correcto |
+| Tema claro: se corrigió un error (el contenido heredaba el color del encabezado de la pestaña y los títulos quedaban invisibles) | Corregido y verificado |
+| Cerrar la ventana con funciones activas | Envía `restore` antes de salir |
+| Desconectar con funciones activas | Envía `restore` |
+
+### Pruebas dentro del juego (pendientes: requieren Windows con la build 532)
+
+Leyenda: **Pendiente** = no ejecutada en esta ronda. 1.0.0 = resultado previo en la 530 (ver más abajo).
+
+| Pestaña | Función | En el juego (532) | Antecedente 1.0.0 (530) |
+|---|---|---|---|
+| — | Instalar complemento, abrir el juego y conectar | Pendiente | Correcto |
+| — | Respaldo de partidas antes de probar | Pendiente (Ajustes › Respaldar partidas) | — |
+| Estadísticas | Reputación actual | Pendiente | Correcto (HUD 42) |
+| Estadísticas | Reputación permanente | Pendiente | Correcto |
+| Estadísticas | Puntos de estudio | Pendiente | Asignar correcto; consumir pendiente |
+| Estadísticas | Materias: progreso y nivel (×5) | Pendiente | Biología correcta |
+| Estadísticas | Seducción, iluminación, insensibilidad | Pendiente | — |
+| Estadísticas | Estado mental, salud, velocidades | Pendiente | — |
+| Recursos | Dinero (+ bloqueo) | Pendiente | Correcto (HUD) |
+| Recursos | Puntos de información (+ bloqueo en compras) | Pendiente | Correcto (compra con saldo bloqueado) |
+| NPC | Lista, buscador y detalle | Pendiente | Lista correcta (86 NPC) |
+| NPC | Ignorar a la protagonista | Pendiente | — |
+| NPC | Enviar a su destino / llevar a la protagonista | Pendiente | — |
+| NPC | Amistad, reputación y velocidad | Pendiente | — |
+| NPC | Congelar todos / estudiantes / profesores / consejo | Pendiente | Global correcto (86/86) |
+| Comportamiento | Personajes estúpidos | Pendiente | Activar/desactivar correcto; detección pendiente |
+| Comportamiento | Visión, audición, testigos, profesores, consejo, Senpai, reportes | Pendiente | — |
+| Comportamiento | Estado mental al máximo, sin penalizaciones | Pendiente | — |
+| Tiempo | Congelar reloj | Pendiente | Correcto |
+| Tiempo | Hora, velocidad del reloj, atmósfera | Pendiente | — |
+| Perfiles | Guardar, cargar, aplicar, eliminar | Pendiente | — |
+| Ajustes | Actualizar complemento 1.0.0 → 1.1.0 | Pendiente | — |
+| Ajustes | Desinstalar | Pendiente (probado en carpetas falsas) | — |
+| — | Desconectar y reconectar | Pendiente (correcto con simulador) | Correcto |
+| — | Cambiar de escena con funciones activas | Pendiente | Correcto (conexión recuperada) |
+| — | Cerrar el trainer con funciones activas (todo se restaura) | Pendiente (correcto con simulador) | — |
+
+Para completar esta tabla: respaldá las partidas, instalá con
+`Compilar.ps1 -Paquete` o el `.zip`, y recorré cada fila anotando el resultado.
+
+---
+
+## Versión 1.0.0
+
 Fecha de trabajo: 17 de octubre de 2026. Juego local: build 530, publicada
 el 15/10/2026. Este registro distingue código compilado de pruebas jugables.
 

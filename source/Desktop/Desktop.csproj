@@ -1,1 +1,24 @@
-<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>WinExe</OutputType><TargetFramework>net8.0-windows</TargetFramework><UseWPF>true</UseWPF><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings><AssemblyName>YandereSimulatorUltimateTrainer</AssemblyName><PublishSingleFile>true</PublishSingleFile><IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract><SelfContained>true</SelfContained><RuntimeIdentifier>win-x64</RuntimeIdentifier></PropertyGroup></Project>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>YandereSimulatorUltimateTrainer</AssemblyName>
+    <RootNamespace>UltimateTrainer</RootNamespace>
+    <StartupObject>UltimateTrainer.Programa</StartupObject>
+    <Version>1.1.0</Version>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\compatibilidad.json" LogicalName="compatibilidad.json" />
+    <InternalsVisibleTo Include="YandereUltimate.Pruebas" />
+    <Compile Include="..\Comun\Definiciones.cs" Link="Comun\Definiciones.cs" />
+    <Using Include="System.IO" />
+  </ItemGroup>
+</Project>

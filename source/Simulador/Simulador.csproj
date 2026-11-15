@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Herramienta de desarrollo: imita el proceso del juego con el complemento cargado, usando el mismo
+       Protocolo.cs del puente, para probar la aplicación sin el juego. No se incluye en el paquete. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>YandereSimulator</AssemblyName>
+    <RootNamespace>YandereUltimate.Simulador</RootNamespace>
+    <Version>1.1.0</Version>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\Comun\Definiciones.cs" Link="Comun\Definiciones.cs" />
+    <Compile Include="..\Bridge\Protocolo.cs" Link="Bridge\Protocolo.cs" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.2" />
+  </ItemGroup>
+</Project>

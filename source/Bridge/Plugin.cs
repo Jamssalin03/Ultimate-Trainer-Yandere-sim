@@ -2,448 +2,453 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
-using System.IO.Pipes;
 using System.Linq;
-using System.Reflection;
-using System.Security.AccessControl;
 using System.Security.Cryptography;
-using System.Security.Principal;
 using System.Threading;
-using System.Runtime.InteropServices;
-using Microsoft.Win32.SafeHandles;
 using BepInEx;
 using HarmonyLib;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 using UnityEngine;
 using UnityEngine.SceneManagement;
-using UObj = UnityEngine.Object;
+using YandereUltimate.Comun;
 
 namespace YandereUltimate
 {
-    [BepInPlugin("local.yandere.ultimate", "Yandere Simulator Ultimate Trainer", "1.0.0")]
+    // Esta clase no declara campos ni firmas con tipos de Assembly-CSharp: si una build no verificada
+    // cambia algo, el complemento igual carga y desactiva sólo las funciones afectadas (ver Juego.cs).
+    [BepInPlugin("local.yandere.ultimate", "Yandere Simulator Ultimate Trainer", Version)]
     [BepInProcess("YandereSimulator.exe")]
     public sealed class Plugin : BaseUnityPlugin
     {
-        public const string ExpectedHash = "62926A9CC29156037C340E7BD177D88D760D03618FCDFF0C2CD66CCAB78CED09";
-        internal static Plugin Instance;
-        internal readonly HashSet<string> Toggles = new HashSet<string>();
-        internal readonly HashSet<int> Ignored = new HashSet<int>();
-        readonly Dictionary<string, double> Locks = new Dictionary<string, double>();
-        readonly Dictionary<string, double> Originals = new Dictionary<string, double>();
-        readonly ConcurrentQueue<Job> jobs = new ConcurrentQueue<Job>();
-        readonly Dictionary<int, FrozenNpc> frozen = new Dictionary<int, FrozenNpc>();
-        readonly Dictionary<int, float> npcSpeeds = new Dictionary<int, float>();
-        readonly Dictionary<string, int> relations = new Dictionary<string, int>();
-        ClockScript frozenClock;
-        float originalClockSpeed;
-        NamedPipeServerStream server;
-        Thread worker;
-        volatile bool running;
-        string token, pipe, endpoint;
-        Harmony harmony;
-        YandereScript yan;
-        ClassScript academic;
-        ReputationScript reputation;
-        ClockScript clock;
-        StudentManagerScript manager;
-        StudentScript[] students = new StudentScript[0];
-        float nextRefresh;
-        bool compatible;
-        string hash;
-        bool originalBackground;
-        DateTime lastClient = DateTime.UtcNow;
+        public const string Version = "1.1.0";
+        static readonly HashSet<string> Globales = new HashSet<string> { "permanentRep", "seduction", "enlightenment", "numbness", "atmosphere" };
+        const int EsperaRespuestaMs = 5000, EsperaExtraMs = 25000, InactividadSegundos = 12;
 
-        sealed class Job
-        {
-            public JObject Request;
-            public ManualResetEventSlim Done = new ManualResetEventSlim();
-            public string Response;
-            public volatile bool Expired;
-        }
-        sealed class FrozenNpc
-        {
-            public StudentScript Npc;
-            public bool Enabled, CanMove, CanSearch;
-            public Vector3 Position;
-            public readonly Dictionary<AnimationState, float> Speeds = new Dictionary<AnimationState, float>();
-        }
+        internal static Plugin Instance;
+
+        readonly HashSet<string> activos = new HashSet<string>();
+        readonly HashSet<int> ignorados = new HashSet<int>();
+        readonly Dictionary<string, double> bloqueos = new Dictionary<string, double>();
+        readonly Dictionary<string, double> originales = new Dictionary<string, double>();
+        readonly ConcurrentQueue<Trabajo> trabajos = new ConcurrentQueue<Trabajo>();
+        readonly Dictionary<int, NpcCongelado> congelados = new Dictionary<int, NpcCongelado>();
+        readonly Dictionary<int, float> velocidadesNpc = new Dictionary<int, float>();
+        readonly Dictionary<int, int> amistades = new Dictionary<int, int>();
+        readonly Dictionary<int, int> reputacionesNpc = new Dictionary<int, int>();
+        readonly Escena escena = new Escena();
+
+        Compatibilidad compat;
+        Respaldos respaldos;
+        Component relojCongelado;
+        float velocidadOriginalReloj;
+        System.IO.Pipes.NamedPipeServerStream servidor;
+        Thread hilo;
+        volatile bool ejecutando;
+        string token, canal, endpoint;
+        Harmony harmony;
+        float proximoRefresco;
+        bool fondoOriginal;
+        DateTime ultimoCliente = DateTime.UtcNow;
 
         void Awake()
         {
             Instance = this;
-            originalBackground = Application.runInBackground;
+            fondoOriginal = Application.runInBackground;
             Application.runInBackground = true;
-            using (var sha = SHA256.Create()) hash = BitConverter.ToString(sha.ComputeHash(File.ReadAllBytes(typeof(YandereScript).Assembly.Location))).Replace("-", "");
-            compatible = hash == ExpectedHash;
-            if (compatible)
+
+            compat = Compatibilidad.Evaluar(typeof(Plugin).Assembly, Logger.LogWarning);
+            if (compat.Estado != Compatibilidad.Incompatible)
             {
                 harmony = new Harmony("local.yandere.ultimate");
-                harmony.PatchAll(typeof(Plugin).Assembly);
+                Parches.Aplicar(harmony, compat, Logger.LogWarning);
             }
-            var folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "YandereUltimate");
-            Directory.CreateDirectory(folder);
-            endpoint = Path.Combine(folder, "endpoint.json");
+
+            var carpeta = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "YandereUltimate");
+            Directory.CreateDirectory(carpeta);
+            respaldos = new Respaldos(Path.Combine(carpeta, "Cambios"), 50, TimeSpan.FromSeconds(1), Logger.LogWarning);
+            endpoint = Path.Combine(carpeta, "endpoint.json");
             var bytes = new byte[32];
             using (var rng = RandomNumberGenerator.Create()) rng.GetBytes(bytes);
             token = Convert.ToBase64String(bytes);
-            pipe = "YandereUltimate-" + System.Diagnostics.Process.GetCurrentProcess().Id + "-" + Guid.NewGuid().ToString("N");
-            // Unity's Mono does not implement WindowsIdentity.User. Native ACLs avoid that API.
-            Native.WritePrivate(endpoint, JsonConvert.SerializeObject(new { pipe, token, pid = System.Diagnostics.Process.GetCurrentProcess().Id }));
-            running = true;
-            worker = new Thread(Serve) { IsBackground = true, Name = "YandereUltimate.LocalPipe" };
-            worker.Start();
-            SceneManager.sceneLoaded += SceneLoaded;
-            Logger.LogInfo("Puente local listo. Compatibilidad: " + compatible + "; SHA256 " + hash);
+            int pid = System.Diagnostics.Process.GetCurrentProcess().Id;
+            canal = "YandereUltimate-" + pid + "-" + Guid.NewGuid().ToString("N");
+            // Mono de Unity no implementa WindowsIdentity.User: las ACL se crean con Win32 (Native.cs).
+            Native.WritePrivate(endpoint, JsonConvert.SerializeObject(new { pipe = canal, token, pid, protocol = Definiciones.Protocolo }));
+            ejecutando = true;
+            hilo = new Thread(Servir) { IsBackground = true, Name = "YandereUltimate.LocalPipe" };
+            hilo.Start();
+            SceneManager.sceneLoaded += EscenaCargada;
+
+            Logger.LogInfo("Puente local " + Version + " listo. Compatibilidad: " + compat.Estado + " · build " + (compat.Build ?? "desconocida") + " · SHA256 " + compat.Hash);
+            foreach (var f in compat.Desactivadas()) Logger.LogWarning("Función desactivada «" + f.Nombre + "»: " + f.Motivo);
         }
 
-        void SceneLoaded(Scene s, LoadSceneMode mode)
+        void EscenaCargada(Scene s, LoadSceneMode modo)
         {
-            // Restore only surviving objects; destroyed scene references must never be reused.
-            UnfreezeAll();
-            Originals.Clear();
-            Ignored.Clear();
-            npcSpeeds.Clear(); relations.Clear(); frozenClock = null;
-            nextRefresh = 0;
-            Refresh();
+            // Sólo se restauran objetos que sobreviven; nunca se reutilizan referencias de la escena anterior.
+            DescongelarTodo();
+            if (relojCongelado != null) { Intentar("interruptor.freezeClock", () => Juego.FijarVelocidadReloj(relojCongelado, velocidadOriginalReloj)); }
+            relojCongelado = null;
+            // Los valores globales (PlayerGlobals, SchoolGlobals) sobreviven al cambio de escena y se siguen
+            // pudiendo restaurar; los de objetos de la escena anterior se descartan.
+            foreach (var id in originales.Keys.Where(k => !Globales.Contains(k)).ToArray()) originales.Remove(id);
+            ignorados.Clear(); velocidadesNpc.Clear();
+            Application.runInBackground = true;
+            proximoRefresco = 0;
+            Refrescar();
         }
 
-        void Serve()
+        // ---------- Canal local (hilo propio) ----------
+
+        void Servir()
         {
-            while (running)
+            while (ejecutando)
             {
                 try
                 {
-                    using (server = Native.CreatePipe(pipe))
+                    using (servidor = Native.CreatePipe(canal))
                     {
-                        server.WaitForConnection();
-                        using (var reader = new StreamReader(server))
-                        using (var writer = new StreamWriter(server) { AutoFlush = true })
+                        servidor.WaitForConnection();
+                        using (var lector = new StreamReader(servidor))
+                        using (var escritor = new StreamWriter(servidor) { AutoFlush = true })
                         {
-                            while (running && server.IsConnected)
+                            while (ejecutando && servidor.IsConnected)
                             {
-                                var chars = new List<char>();
-                                int c;
-                                while ((c = reader.Read()) >= 0 && c != '\n') { if (chars.Count >= 65536) throw new IOException("Solicitud demasiado larga"); chars.Add((char)c); }
-                                if (c < 0) break;
-                                try
-                                {
-                                    var request = JObject.Parse(new string(chars.ToArray()));
-                                    if ((string)request["token"] != token) { writer.WriteLine("{\"ok\":false,\"error\":\"Autenticación rechazada\"}"); break; }
-                                    var job = new Job { Request = request };
-                                    jobs.Enqueue(job);
-                                    if (job.Done.Wait(5000)) writer.WriteLine(job.Response);
-                                    else { job.Expired = true; writer.WriteLine("{\"ok\":false,\"error\":\"El juego no responde; operación cancelada\"}"); }
-                                }
-                                catch (JsonException) { writer.WriteLine("{\"ok\":false,\"error\":\"Solicitud inválida\"}"); }
+                                var linea = LeerLinea(lector);
+                                if (linea == null) break;
+                                escritor.WriteLine(Atender(linea, out bool cerrar));
+                                if (cerrar) break;
                             }
                         }
                     }
                 }
-                catch (IOException) { /* A client may close immediately after its one response. */ }
-                catch (Exception e) { if (running) { Logger.LogWarning("Comunicación: " + e.Message); Thread.Sleep(250); } }
+                catch (IOException) { /* El cliente puede cerrar justo después de su respuesta. */ }
+                catch (Exception e) { if (ejecutando) { Logger.LogWarning("Comunicación: " + e.Message); Thread.Sleep(250); } }
             }
         }
+
+        static string LeerLinea(StreamReader lector)
+        {
+            var texto = new System.Text.StringBuilder();
+            int c;
+            while ((c = lector.Read()) >= 0 && c != '\n')
+            {
+                if (texto.Length >= Protocolo.LongitudMaxima) throw new IOException("Solicitud demasiado larga");
+                if (c != '\r') texto.Append((char)c);
+            }
+            return c < 0 && texto.Length == 0 ? null : texto.ToString();
+        }
+
+        string Atender(string linea, out bool cerrar)
+        {
+            cerrar = false;
+            Solicitud solicitud;
+            try
+            {
+                var json = Protocolo.Leer(linea);
+                var recibido = json["token"];
+                if (recibido == null || recibido.Type != Newtonsoft.Json.Linq.JTokenType.String || !Protocolo.TokenIgual((string)recibido, token))
+                {
+                    cerrar = true;
+                    return Protocolo.Error("Autenticación rechazada");
+                }
+                solicitud = Protocolo.Validar(json);
+            }
+            catch (SolicitudInvalidaException e) { return Protocolo.Error(e.Message); }
+            catch (JsonException) { return Protocolo.Error("Solicitud inválida"); }
+
+            var trabajo = new Trabajo(solicitud);
+            trabajos.Enqueue(trabajo);
+            return trabajo.Esperar(EsperaRespuestaMs, EsperaExtraMs);
+        }
+
+        // ---------- Hilo principal ----------
 
         void Update()
         {
-            Application.runInBackground = true;
-            if (!compatible) { Drain(); return; }
-            if (Time.realtimeSinceStartup >= nextRefresh) { Refresh(); nextRefresh = Time.realtimeSinceStartup + 2f; }
-            Drain();
-            // A crashed or closed client cannot leave NPCs frozen indefinitely.
-            if ((DateTime.UtcNow - lastClient).TotalSeconds > 12 && (Toggles.Count > 0 || Locks.Count > 0 || Originals.Count > 0 || relations.Count > 0 || npcSpeeds.Count > 0)) Restore();
-            foreach (var pair in Locks.ToArray())
-                try { var value = Read(pair.Key); if (value < pair.Value) Write(pair.Key, pair.Value); }
-                catch { Locks.Remove(pair.Key); }
-            if (yan != null && Toggles.Contains("sanity")) yan.Sanity = 100f;
-            if (reputation != null && Toggles.Contains("noPenalty") && reputation.PendingRep < 0) { reputation.PendingRep = 0; reputation.UpdatePendingRepLabel(); }
-            if(Toggles.Contains("freezeClock") && clock != null) { if(frozenClock != clock) { frozenClock=clock; originalClockSpeed=clock.TimeSpeed; } clock.TimeSpeed=0; }
-            else if(frozenClock != null) { frozenClock.TimeSpeed=originalClockSpeed; frozenClock=null; }
-            FreezeUpdate();
-        }
+            if (compat.Estado != Compatibilidad.Incompatible && Time.realtimeSinceStartup >= proximoRefresco) { Refrescar(); proximoRefresco = Time.realtimeSinceStartup + 2f; }
+            ProcesarTrabajos();
+            if (compat.Estado == Compatibilidad.Incompatible) return;
 
-        void Drain()
-        {
-            for (int i = 0; i < 8 && jobs.TryDequeue(out var job); i++)
+            // Un cliente cerrado o colgado no puede dejar NPC congelados indefinidamente.
+            if ((DateTime.UtcNow - ultimoCliente).TotalSeconds > InactividadSegundos && HayCambios()) { Logger.LogInfo("Sin contacto del entrenador: se restaura la sesión."); Restaurar(); }
+
+            foreach (var par in bloqueos.ToArray())
             {
-                if (job.Expired) { job.Done.Set(); continue; }
                 try
                 {
-                    lastClient = DateTime.UtcNow;
-                    var result = Execute(job.Request);
-                    job.Response = JsonConvert.SerializeObject(new { ok = true, data = result });
+                    var actual = Juego.Valores[par.Key].Leer(escena);
+                    if (actual == null) { Logger.LogWarning("Se quita el bloqueo de " + par.Key + ": no está disponible en esta escena o modo."); bloqueos.Remove(par.Key); continue; }
+                    if (actual.Value < par.Value) Escribir(par.Key, par.Value);
                 }
-                catch (Exception e) { Logger.LogWarning(e.Message); job.Response = JsonConvert.SerializeObject(new { ok = false, error = e.Message }); }
-                finally { job.Done.Set(); }
+                catch (Exception e) { Logger.LogWarning("Se quita el bloqueo de " + par.Key + ": " + e.Message); bloqueos.Remove(par.Key); }
+            }
+            if (activos.Contains("sanity")) Intentar("interruptor.sanity", () => Juego.MantenerCordura(escena));
+            if (activos.Contains("noPenalty")) Intentar("interruptor.noPenalty", () => Juego.SinPenalizacion(escena));
+            ActualizarReloj();
+            ActualizarCongelados();
+        }
+
+        void LateUpdate()
+        {
+            foreach (var f in congelados.Values) if (f.Npc != null) f.Npc.transform.position = f.Posicion;
+        }
+
+        /// <summary>Ejecuta un interruptor de cada frame; si falla, lo desactiva y lo registra una vez.</summary>
+        void Intentar(string funcion, Action accion)
+        {
+            try { accion(); }
+            catch (Exception e)
+            {
+                var id = funcion.Substring(funcion.IndexOf('.') + 1);
+                Logger.LogWarning("Se desactiva " + funcion + ": " + e.Message);
+                activos.Remove(id);
+                compat.Desactivar(funcion, "Falló durante la partida: " + e.Message);
             }
         }
 
-        object Execute(JObject request)
+        bool HayCambios() => activos.Count > 0 || bloqueos.Count > 0 || originales.Count > 0 || amistades.Count > 0 || reputacionesNpc.Count > 0 || velocidadesNpc.Count > 0 || ignorados.Count > 0;
+
+        void ProcesarTrabajos()
         {
-            var op = (string)request["op"];
-            if (op == "snapshot") return Snapshot();
-            if (!compatible) throw new InvalidOperationException("Versión incompatible: el ensamblado no coincide con la build verificada.");
-            if (op == "restore") { Restore(); return Snapshot(); }
-            var id = (string)request["id"];
-            var backupFolder=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"YandereUltimate","Cambios");
-            Directory.CreateDirectory(backupFolder);
-            File.WriteAllText(Path.Combine(backupFolder,DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fffffff")+".json"),JsonConvert.SerializeObject(new { operation=op, id, before=Snapshot() }));
-            if (op == "set")
+            for (int i = 0; i < 8 && trabajos.TryDequeue(out var trabajo); i++)
             {
-                var value = (double)request["value"];
-                if (double.IsNaN(value) || double.IsInfinity(value)) throw new ArgumentException("Valor inválido");
-                if (!Originals.ContainsKey(id)) Originals[id] = Read(id);
-                Write(id, value);
-                if ((bool?)request["locked"] == true) Locks[id] = value; else Locks.Remove(id);
-            }
-            else if (op == "restoreValue")
-            {
-                Locks.Remove(id);
-                if (Originals.TryGetValue(id, out var original)) { Write(id, original); Originals.Remove(id); }
-            }
-            else if (op == "toggle")
-            {
-                var allowed = new[] { "stupid", "vision", "hearing", "witness", "teachers", "council", "senpai", "reports", "freezeAll", "freezeStudents", "freezeTeachers", "freezeCouncil", "freezeClock", "sanity", "noPenalty" };
-                if (!allowed.Contains(id)) throw new ArgumentException("Función no permitida");
-                if ((bool)request["enabled"]) Toggles.Add(id); else Toggles.Remove(id);
-            }
-            else if (op == "npc")
-            {
-                int npcId = (int)request["npc"];
-                var npc = students.FirstOrDefault(n => n != null && n.StudentID == npcId);
-                if (npc == null) throw new InvalidOperationException("El personaje ya no está cargado.");
-                switch (id)
+                if (!trabajo.Reclamar()) continue; // venció: el cliente ya recibió la cancelación
+                string respuesta;
+                try
                 {
-                    case "ignore": if ((bool)request["enabled"]) Ignored.Add(npcId); else Ignored.Remove(npcId); break;
-                    case "friendship": if(!relations.ContainsKey("friendship:"+npcId)) relations["friendship:"+npcId]=StudentGlobals.GetStudentFriendship(npcId); StudentGlobals.SetStudentFriendship(npcId, ClampInt((double)request["value"], 0, 100)); break;
-                    case "reputation": if(!relations.ContainsKey("reputation:"+npcId)) relations["reputation:"+npcId]=StudentGlobals.GetStudentReputation(npcId); StudentGlobals.SetStudentReputation(npcId, ClampInt((double)request["value"], -100, 100)); break;
-                    case "speed": if(!npcSpeeds.ContainsKey(npcId)) npcSpeeds[npcId]=npc.WalkSpeed; npc.WalkSpeed=Clamp((double)request["value"],.1f,8f); if(npc.Pathfinding!=null) npc.Pathfinding.maxSpeed=npc.WalkSpeed; break;
-                    case "toDestination": if (npc.Dying || !npc.Alive) throw new InvalidOperationException("Personaje no disponible"); npc.TeleportToDestination(); break;
-                    case "playerToNpc":
-                        if (yan == null || !yan.CanMove || yan.Attacking || yan.Struggling) throw new InvalidOperationException("La protagonista está ocupada");
-                        var point = npc.transform.position - npc.transform.forward * 2;
-                        if (!Physics.Raycast(point + Vector3.up * 2, Vector3.down, out var hit, 5f)) throw new InvalidOperationException("No se encontró suelo válido");
-                        bool was = yan.MyController.enabled; yan.MyController.enabled = false; yan.transform.position = hit.point + Vector3.up * .1f; yan.MyController.enabled = was; break;
-                    default: throw new ArgumentException("Acción no permitida");
+                    ultimoCliente = DateTime.UtcNow;
+                    respuesta = Protocolo.Correcto(Ejecutar(trabajo.Solicitud));
                 }
+                catch (Exception e) { Logger.LogWarning(e.Message); respuesta = Protocolo.Error(e.Message); }
+                trabajo.Completar(respuesta);
             }
-            else throw new ArgumentException("Operación desconocida");
-            return Snapshot();
         }
 
-        void Refresh()
+        object Ejecutar(Solicitud s)
         {
-            yan = Find<YandereScript>();
-            academic = yan != null && yan.Class != null ? yan.Class : Find<ClassScript>();
-            reputation = Find<ReputationScript>();
-            clock = Find<ClockScript>();
-            manager = Find<StudentManagerScript>();
-            students = manager != null && manager.Students != null ? manager.Students.Where(n => n != null && n.gameObject.activeInHierarchy).Distinct().ToArray() : new StudentScript[0];
-        }
-        static T Find<T>() where T : Component => Resources.FindObjectsOfTypeAll<T>().FirstOrDefault(x => x.gameObject.scene.IsValid() && x.gameObject.scene.isLoaded);
-        static int ClampInt(double v, int min, int max) => (int)Math.Max(min, Math.Min(max, Math.Round(v)));
-        static float Clamp(double v, float min, float max) => (float)Math.Max(min, Math.Min(max, v));
+            if (s.Op == Definiciones.OpSnapshot) return Instantanea();
+            if (compat.Estado == Compatibilidad.Incompatible) throw new InvalidOperationException("Versión incompatible: no se encontró ninguna función disponible en esta build.");
+            if (s.Op == Definiciones.OpRestore) { Restaurar(); return Instantanea(); }
 
-        static readonly string[] Subjects = { "Biology", "Chemistry", "Language", "Physical", "Psychology" };
-        static readonly string[] Values = { "reputation", "permanentRep", "study", "info", "money", "seduction", "enlightenment", "numbness", "sanity", "run", "walk", "health", "hour", "timeSpeed", "atmosphere", "Biology", "BiologyGrade", "Chemistry", "ChemistryGrade", "Language", "LanguageGrade", "Physical", "PhysicalGrade", "Psychology", "PsychologyGrade" };
-        double Read(string id)
-        {
-            switch (id)
+            string funcion = s.Op == Definiciones.OpToggle ? "interruptor." + s.Id : s.Op == Definiciones.OpNpc ? "npc." + s.Id : "valor." + s.Id;
+            bool desactivando = s.Op == Definiciones.OpRestoreValue || (s.Op == Definiciones.OpToggle && !s.Activado) || (s.Op == Definiciones.OpNpc && s.Id == Definiciones.NpcIgnorar && !s.Activado);
+            if (!desactivando && !compat.Disponible(funcion)) throw new InvalidOperationException("Función desactivada en esta build: " + compat.Motivo(funcion));
+
+            // Respaldo del estado previo: como máximo uno por segundo y escrito fuera del hilo principal.
+            respaldos.Encolar(DateTime.UtcNow, s.Op, s.Id, Instantanea);
+
+            switch (s.Op)
             {
-                case "reputation": if (reputation != null) return reputation.Reputation; break;
-                case "permanentRep": return PlayerGlobals.Reputation;
-                case "study": if (academic != null) return academic.StudyPoints; break;
-                case "info": if (!GameGlobals.Eighties && yan != null && yan.Inventory != null) return yan.Inventory.PantyShots; break;
-                case "money": if (yan != null && yan.Inventory != null) return yan.Inventory.Money; break;
-                case "seduction": return PlayerGlobals.Seduction;
-                case "enlightenment": return PlayerGlobals.Enlightenment;
-                case "numbness": return PlayerGlobals.Numbness;
-                case "sanity": if (yan != null) return yan.Sanity; break;
-                case "run": if (yan != null) return yan.RunSpeed; break;
-                case "walk": if (yan != null) return yan.WalkSpeed; break;
-                case "health": if (yan != null) return yan.Health; break;
-                case "hour": if (clock != null) return clock.PresentTime / 60f; break;
-                case "timeSpeed": if (clock != null) return clock.TimeSpeed; break;
-                case "atmosphere": return SchoolGlobals.SchoolAtmosphere;
-                default:
-                    if (Values.Contains(id) && academic != null) return Convert.ToDouble(typeof(ClassScript).GetField(id).GetValue(academic));
+                case Definiciones.OpSet:
+                    if (!originales.ContainsKey(s.Id)) originales[s.Id] = Leer(s.Id);
+                    Escribir(s.Id, s.Valor.Value);
+                    if (s.Bloqueado) bloqueos[s.Id] = s.Valor.Value; else bloqueos.Remove(s.Id);
+                    break;
+                case Definiciones.OpRestoreValue:
+                    bloqueos.Remove(s.Id);
+                    if (originales.TryGetValue(s.Id, out var original)) { Escribir(s.Id, original); originales.Remove(s.Id); }
+                    break;
+                case Definiciones.OpToggle:
+                    if (s.Activado) activos.Add(s.Id); else activos.Remove(s.Id);
+                    break;
+                case Definiciones.OpNpc:
+                    AccionNpc(s);
                     break;
             }
-            throw new InvalidOperationException("No disponible en esta escena o modo");
+            return Instantanea();
         }
 
-        void Write(string id, double value)
+        void AccionNpc(Solicitud s)
         {
-            Read(id); // availability check before any mutation
-            switch (id)
+            var npc = escena.Estudiantes.FirstOrDefault(n => n != null && Juego.IdNpc(n) == s.Npc);
+            if (npc == null) throw new InvalidOperationException("El personaje ya no está cargado.");
+            switch (s.Id)
             {
-                case "reputation": reputation.Reputation = Clamp(value, -100, 100); reputation.LerpTimer = 0; reputation.UpdatePendingRepLabel(); break;
-                case "permanentRep": PlayerGlobals.Reputation = Clamp(value, -100, 100); break;
-                case "study": academic.StudyPoints = ClampInt(value, 0, 10000); academic.StartingPoints = Math.Max(academic.StartingPoints, academic.StudyPoints); academic.UpdateLabel(); break;
-                case "info": yan.Inventory.PantyShots = ClampInt(value, 0, 100000); PlayerGlobals.PantyShots = yan.Inventory.PantyShots; foreach(var s in Resources.FindObjectsOfTypeAll<ServicesScript>().Where(x => x.gameObject.scene.IsValid() && x.Inventory == yan.Inventory)) { s.UpdatePantyCount(); if (s.gameObject.activeInHierarchy) s.UpdateDesc(); } break;
-                case "money": yan.Inventory.Money = Clamp(value, 0, 1000000); PlayerGlobals.Money = yan.Inventory.Money; yan.Inventory.UpdateMoney(); break;
-                case "seduction": PlayerGlobals.Seduction = ClampInt(value, 0, 5); if(academic != null) academic.Seduction = PlayerGlobals.Seduction; break;
-                case "enlightenment": PlayerGlobals.Enlightenment = ClampInt(value, 0, 5); if(academic != null) academic.Enlightenment = PlayerGlobals.Enlightenment; break;
-                case "numbness": PlayerGlobals.Numbness = ClampInt(value, 0, 5); if(academic != null) academic.Numbness = PlayerGlobals.Numbness; break;
-                case "sanity": yan.Sanity = Clamp(value, 0, 100); break;
-                case "run": yan.RunSpeed = Clamp(value, 1, 20); break;
-                case "walk": yan.WalkSpeed = Clamp(value, .5f, 10); break;
-                case "health": yan.Health = ClampInt(value, 1, 100); break;
-                case "hour": if(value / 1f < clock.PresentTime / 60f) throw new InvalidOperationException("Retroceder la hora puede romper eventos; sólo se permite avanzar."); clock.PresentTime = Clamp(value, 7, 17.9f) * 60; break;
-                case "timeSpeed": clock.TimeSpeed = Clamp(value, 0, 600); break;
-                case "atmosphere": SchoolGlobals.SchoolAtmosphere = Clamp(value, 0, 1); if(manager != null) manager.Atmosphere = SchoolGlobals.SchoolAtmosphere; break;
-                default:
-                    string subject = Subjects.FirstOrDefault(s => id == s || id == s + "Grade");
-                    if (subject == null) throw new ArgumentException("Estadística desconocida");
-                    int index = Array.IndexOf(Subjects, subject) + 1;
-                    int points = id.EndsWith("Grade") ? ClampInt(value, 0, 5) * 20 : ClampInt(value, 0, 100);
-                    int grade = points / 20;
-                    typeof(ClassScript).GetField(subject).SetValue(academic, points);
-                    typeof(ClassScript).GetField(subject + "Grade").SetValue(academic, grade);
-                    typeof(ClassGlobals).GetProperty(subject).SetValue(null, points, null);
-                    typeof(ClassGlobals).GetProperty(subject + "Grade").SetValue(null, grade, null);
-                    if(academic.Subject != null && academic.Subject.Length > index) academic.Subject[index] = points;
-                    if(academic.SubjectTemp != null && academic.SubjectTemp.Length > index) academic.SubjectTemp[index] = 0;
-                    if(subject == "Physical" && yan != null) yan.PhysicalGrade = grade;
-                    AccessTools.Method(typeof(ClassScript), "UpdateBars").Invoke(academic, null);
+                case Definiciones.NpcIgnorar:
+                    if (s.Activado) ignorados.Add(s.Npc); else ignorados.Remove(s.Npc);
+                    break;
+                case Definiciones.NpcAmistad:
+                    if (!amistades.ContainsKey(s.Npc)) amistades[s.Npc] = Juego.Amistad(s.Npc);
+                    Juego.FijarAmistad(s.Npc, (int)Math.Round(s.Valor.Value));
+                    break;
+                case Definiciones.NpcReputacion:
+                    if (!reputacionesNpc.ContainsKey(s.Npc)) reputacionesNpc[s.Npc] = Juego.ReputacionNpc(s.Npc);
+                    Juego.FijarReputacionNpc(s.Npc, (int)Math.Round(s.Valor.Value));
+                    break;
+                case Definiciones.NpcVelocidad:
+                    if (!velocidadesNpc.ContainsKey(s.Npc)) velocidadesNpc[s.Npc] = Juego.VelocidadNpc(npc);
+                    Juego.FijarVelocidadNpc(npc, (float)s.Valor.Value);
+                    break;
+                case Definiciones.NpcADestino:
+                    Juego.IrADestino(npc);
+                    break;
+                case Definiciones.NpcProtagonista:
+                    Juego.ProtagonistaAlNpc(escena, npc);
                     break;
             }
         }
 
-        object Snapshot()
+        void Refrescar() => Juego.Refrescar(escena, compat.Disponible);
+
+        double Leer(string id)
         {
-            var values = new Dictionary<string, object>();
-            if (compatible) foreach (var id in Values) try { values[id] = Read(id); } catch { values[id] = null; }
-            return new {
-                compatible, hash, build = "530", unity = Application.unityVersion, scene = SceneManager.GetActiveScene().name,
-                mode = compatible ? (GameGlobals.Eighties ? "1980" : "202X") : "Desconocido",
-                profile = compatible ? GameGlobals.Profile : 0, values,
-                toggles = Toggles.ToArray(), locks = Locks.Keys.ToArray(),
-                npcs = students.Where(n => n != null).Select(n => new { id = n.StudentID, name = n.Name, teacher = n.Teacher, council = n.Club == ClubType.Council,
-                    alive = n.Alive, alarm = n.Alarm, chasing = n.Chasing, frozen = frozen.ContainsKey(n.GetInstanceID()), ignored = Ignored.Contains(n.StudentID),
-                    friendship = StudentGlobals.GetStudentFriendship(n.StudentID), reputation = StudentGlobals.GetStudentReputation(n.StudentID), speed=n.WalkSpeed,
-                    x = n.transform.position.x, y = n.transform.position.y, z = n.transform.position.z }).ToArray()
+            if (!compat.Disponible("valor." + id)) throw new InvalidOperationException("Función desactivada en esta build: " + compat.Motivo("valor." + id));
+            return Juego.Valores[id].Leer(escena) ?? throw new InvalidOperationException("No disponible en esta escena o modo.");
+        }
+
+        // Los valores del cliente ya llegan validados por Protocolo.Validar; aquí también se escriben
+        // los originales al restaurar, que pueden estar fuera de los rangos editables.
+        void Escribir(string id, double valor)
+        {
+            Leer(id); // comprobación de disponibilidad antes de modificar
+            Juego.Valores[id].Escribir(escena, valor);
+        }
+
+        object Instantanea()
+        {
+            var valores = new Dictionary<string, object>();
+            foreach (var def in Definiciones.Valores)
+            {
+                object v = null;
+                if (compat.Disponible("valor." + def.Id)) try { v = Juego.Valores[def.Id].Leer(escena); } catch { v = null; }
+                valores[def.Id] = v;
+            }
+            string modo = "Desconocido"; int perfil = 0;
+            if (compat.Disponible("modo")) try { modo = Juego.Modo(); perfil = Juego.Perfil(); } catch { }
+            bool relaciones = compat.Disponible("npc.relaciones");
+            var npcs = new List<object>();
+            if (compat.Disponible("npc.lista"))
+                foreach (var n in escena.Estudiantes)
+                {
+                    if (n == null) continue;
+                    try
+                    {
+                        int id = Juego.IdNpc(n);
+                        npcs.Add(Juego.InfoNpc(n, congelados.ContainsKey(n.GetInstanceID()), ignorados.Contains(id), relaciones));
+                    }
+                    catch { /* un NPC destruido durante la lectura se omite */ }
+                }
+            return new
+            {
+                protocol = Definiciones.Protocolo, plugin = Version,
+                compatibility = compat.Estado, compatible = compat.Estado != Compatibilidad.Incompatible, verified = compat.Verificada,
+                hash = compat.Hash, build = compat.Build ?? "desconocida", buildDate = compat.Fecha,
+                unity = Application.unityVersion, scene = SceneManager.GetActiveScene().name,
+                mode = modo, profile = perfil, values = valores,
+                toggles = activos.ToArray(), locks = bloqueos.Keys.ToArray(),
+                disabled = compat.Desactivadas().Select(f => new { id = f.Id, name = f.Nombre, reason = f.Motivo }).ToArray(),
+                npcs = npcs.ToArray()
             };
         }
 
-        void FreezeUpdate()
+        // ---------- Reloj y congelación ----------
+
+        void ActualizarReloj()
         {
-            foreach(var npc in students)
+            if (activos.Contains("freezeClock") && escena.Reloj != null)
             {
-                if (npc == null) continue;
-                bool freeze = Toggles.Contains("freezeAll") || (npc.Teacher && Toggles.Contains("freezeTeachers")) || (npc.Club == ClubType.Council && Toggles.Contains("freezeCouncil")) || (!npc.Teacher && npc.Club != ClubType.Council && Toggles.Contains("freezeStudents"));
-                int key = npc.GetInstanceID();
-                if(freeze && !frozen.ContainsKey(key))
+                Intentar("interruptor.freezeClock", () =>
                 {
-                    var f = new FrozenNpc { Npc = npc, Enabled = npc.enabled, Position = npc.transform.position, CanMove = npc.Pathfinding != null && npc.Pathfinding.canMove, CanSearch = npc.Pathfinding != null && npc.Pathfinding.canSearch };
-                    if(npc.CharacterAnimation != null) foreach(AnimationState state in npc.CharacterAnimation) { f.Speeds[state] = state.speed; state.speed = 0; }
-                    frozen[key] = f;
-                }
-                if(freeze) { npc.enabled = false; if(npc.Pathfinding != null) { npc.Pathfinding.canMove = false; npc.Pathfinding.canSearch = false; } npc.transform.position = frozen[key].Position; }
-                else if(frozen.TryGetValue(key, out var old)) { Unfreeze(old); frozen.Remove(key); }
+                    if (relojCongelado != escena.Reloj)
+                    {
+                        if (relojCongelado != null) Juego.FijarVelocidadReloj(relojCongelado, velocidadOriginalReloj);
+                        relojCongelado = escena.Reloj; velocidadOriginalReloj = Juego.VelocidadReloj(relojCongelado);
+                    }
+                    Juego.FijarVelocidadReloj(relojCongelado, 0);
+                });
             }
-            foreach(var k in frozen.Where(x => x.Value.Npc == null).Select(x => x.Key).ToArray()) frozen.Remove(k);
+            else if (relojCongelado != null)
+            {
+                var reloj = relojCongelado; relojCongelado = null;
+                Intentar("interruptor.freezeClock", () => Juego.FijarVelocidadReloj(reloj, velocidadOriginalReloj));
+            }
         }
-        void LateUpdate() { foreach(var f in frozen.Values) if(f.Npc != null) f.Npc.transform.position = f.Position; }
-        void Unfreeze(FrozenNpc f) { if(f.Npc == null) return; f.Npc.enabled = f.Enabled; if(f.Npc.Pathfinding != null) { f.Npc.Pathfinding.canMove = f.CanMove; f.Npc.Pathfinding.canSearch = f.CanSearch; } foreach(var state in f.Speeds) if(state.Key != null) state.Key.speed = state.Value; }
-        void UnfreezeAll() { foreach(var f in frozen.Values) Unfreeze(f); frozen.Clear(); }
-        void Restore()
+
+        bool DebeCongelar(Component npc)
         {
-            Toggles.Clear(); Locks.Clear(); Ignored.Clear(); UnfreezeAll();
-            if(frozenClock!=null) { frozenClock.TimeSpeed=originalClockSpeed; frozenClock=null; }
-            foreach(var n in students) if(n!=null && npcSpeeds.TryGetValue(n.StudentID,out var speed)) { n.WalkSpeed=speed; if(n.Pathfinding!=null) n.Pathfinding.maxSpeed=speed; }
-            npcSpeeds.Clear();
-            foreach(var r in relations) { var parts=r.Key.Split(':'); int id=int.Parse(parts[1]); if(parts[0]=="friendship") StudentGlobals.SetStudentFriendship(id,r.Value); else StudentGlobals.SetStudentReputation(id,r.Value); }
-            relations.Clear();
-            foreach(var pair in Originals.ToArray()) try { Write(pair.Key, pair.Value); } catch(Exception e) { Logger.LogWarning("No se pudo restaurar " + pair.Key + ": " + e.Message); }
-            Originals.Clear();
+            if (activos.Contains("freezeAll")) return true;
+            bool profesor = Juego.EsProfesor(npc), consejo = Juego.EsConsejo(npc);
+            return (profesor && activos.Contains("freezeTeachers")) || (consejo && activos.Contains("freezeCouncil")) || (!profesor && !consejo && activos.Contains("freezeStudents"));
         }
+
+        void ActualizarCongelados()
+        {
+            bool alguno = activos.Contains("freezeAll") || activos.Contains("freezeStudents") || activos.Contains("freezeTeachers") || activos.Contains("freezeCouncil");
+            if (!alguno && congelados.Count == 0) return;
+            try
+            {
+                foreach (var npc in escena.Estudiantes)
+                {
+                    if (npc == null) continue;
+                    int clave = npc.GetInstanceID();
+                    if (DebeCongelar(npc))
+                    {
+                        if (!congelados.TryGetValue(clave, out var f)) congelados[clave] = f = Juego.Congelar(npc);
+                        Juego.MantenerCongelado(f);
+                    }
+                    else if (congelados.TryGetValue(clave, out var anterior)) { Juego.Descongelar(anterior); congelados.Remove(clave); }
+                }
+                foreach (var k in congelados.Where(x => x.Value.Npc == null).Select(x => x.Key).ToArray()) congelados.Remove(k);
+            }
+            catch (Exception e)
+            {
+                Logger.LogWarning("Se desactiva la congelación de NPC: " + e.Message);
+                foreach (var id in new[] { "freezeAll", "freezeStudents", "freezeTeachers", "freezeCouncil" }) activos.Remove(id);
+                DescongelarTodo();
+                compat.Desactivar("congelar", "Falló durante la partida: " + e.Message);
+            }
+        }
+
+        void DescongelarTodo()
+        {
+            foreach (var f in congelados.Values)
+                try { Juego.Descongelar(f); } catch (Exception e) { Logger.LogWarning("No se pudo descongelar un NPC: " + e.Message); }
+            congelados.Clear();
+        }
+
+        // ---------- Restauración ----------
+
+        void Restaurar()
+        {
+            activos.Clear(); bloqueos.Clear(); ignorados.Clear(); DescongelarTodo();
+            if (relojCongelado != null) { var reloj = relojCongelado; relojCongelado = null; try { Juego.FijarVelocidadReloj(reloj, velocidadOriginalReloj); } catch (Exception e) { Logger.LogWarning("No se pudo restaurar el reloj: " + e.Message); } }
+            foreach (var n in escena.Estudiantes)
+            {
+                if (n == null) continue;
+                try { if (velocidadesNpc.TryGetValue(Juego.IdNpc(n), out var v)) Juego.FijarVelocidadNpc(n, v); }
+                catch (Exception e) { Logger.LogWarning("No se pudo restaurar la velocidad de un NPC: " + e.Message); }
+            }
+            velocidadesNpc.Clear();
+            foreach (var r in amistades) try { Juego.FijarAmistad(r.Key, r.Value); } catch (Exception e) { Logger.LogWarning("No se pudo restaurar la amistad de " + r.Key + ": " + e.Message); }
+            foreach (var r in reputacionesNpc) try { Juego.FijarReputacionNpc(r.Key, r.Value); } catch (Exception e) { Logger.LogWarning("No se pudo restaurar la reputación de " + r.Key + ": " + e.Message); }
+            amistades.Clear(); reputacionesNpc.Clear();
+            foreach (var par in originales.ToArray())
+                try { Escribir(par.Key, par.Value); } catch (Exception e) { Logger.LogWarning("No se pudo restaurar " + par.Key + ": " + e.Message); }
+            originales.Clear();
+        }
+
         void OnDestroy()
         {
-            running = false;
-            SceneManager.sceneLoaded -= SceneLoaded;
-            if(compatible) Restore();
+            ejecutando = false;
+            SceneManager.sceneLoaded -= EscenaCargada;
+            if (compat != null && compat.Estado != Compatibilidad.Incompatible) Restaurar();
             harmony?.UnpatchSelf();
-            // A synchronous pipe read may block Dispose on Unity's main thread.
-            // Do not join or dispose that worker from the engine shutdown callback.
-            var closingServer=server;
-            ThreadPool.QueueUserWorkItem(_=> { try { closingServer?.Dispose(); } catch { } });
-            try { if(File.Exists(endpoint) && File.ReadAllText(endpoint).Contains(pipe)) File.Delete(endpoint); } catch { }
+            respaldos?.Dispose();
+            // Una lectura síncrona del canal puede bloquear Dispose en el hilo principal de Unity:
+            // se libera desde el pool de hilos, sin esperar al hilo del canal.
+            var cerrar = servidor;
+            ThreadPool.QueueUserWorkItem(_ => { try { cerrar?.Dispose(); } catch { } });
+            try { if (File.Exists(endpoint) && File.ReadAllText(endpoint).Contains(canal)) File.Delete(endpoint); } catch { }
             Instance = null;
-            Application.runInBackground = originalBackground;
+            Application.runInBackground = fondoOriginal;
         }
-        internal bool Ignore(StudentScript npc) => Toggles.Contains("stupid") || Ignored.Contains(npc.StudentID) || (npc.Teacher && Toggles.Contains("teachers")) || (npc.Club == ClubType.Council && Toggles.Contains("council")) || (npc.StudentID == 1 && Toggles.Contains("senpai"));
-        internal bool IsLocked(string id) => Locks.ContainsKey(id);
-    }
 
-    [HarmonyPatch(typeof(YandereScript), "Start")]
-    static class BackgroundPatch
-    {
-        static void Postfix() { Application.runInBackground=true; }
-    }
+        // ---------- Consultas usadas por los parches (sólo tipos primitivos en las firmas) ----------
 
-    [HarmonyPatch(typeof(StudentScript), "Update")]
-    static class ProximityPatch
-    {
-        static void Prefix(StudentScript __instance, ref bool? __state)
-        {
-            var p=Plugin.Instance;
-            if(p!=null && p.Ignore(__instance) && __instance.Yandere!=null) { __state=__instance.Yandere.Invisible; __instance.Yandere.Invisible=true; }
-        }
-        static void Finalizer(StudentScript __instance, bool? __state) { if(__state.HasValue && __instance.Yandere!=null) __instance.Yandere.Invisible=__state.Value; }
-    }
-
-    [HarmonyPatch(typeof(ServicesScript), "Purchase")]
-    static class PurchasePatch
-    {
-        static void Prefix(ServicesScript __instance, ref int? __state) { if(Plugin.Instance!=null && Plugin.Instance.IsLocked("info")) __state=__instance.Inventory.PantyShots; }
-        static void Postfix(ServicesScript __instance, int? __state)
-        {
-            if(!__state.HasValue) return;
-            __instance.Inventory.PantyShots=Math.Max(__state.Value,__instance.Inventory.PantyShots);
-            PlayerGlobals.PantyShots=__instance.Inventory.PantyShots;
-            __instance.UpdatePantyCount();
-        }
-    }
-
-    [HarmonyPatch]
-    static class VisionPatch
-    {
-        static IEnumerable<MethodBase> TargetMethods() => typeof(StudentScript).GetMethods().Where(m => m.Name == "CanSeeObject" && m.ReturnType == typeof(bool));
-        static bool Prefix(StudentScript __instance, ref bool __result)
-        {
-            var p = Plugin.Instance;
-            if(p != null && (p.Toggles.Contains("vision") || p.Ignore(__instance))) { __result = false; return false; }
-            return true;
-        }
-    }
-    [HarmonyPatch]
-    static class ReactionPatch
-    {
-        static readonly string[] names = { "UpdateVision", "BecomeAlarmed", "WitnessMurder", "UpdateWitnessedMurder", "DetermineWhatWasWitnessed", "PersonaReaction", "ChaseYandere", "SenpaiNoticed", "DetermineSenpaiReaction", "Shove", "Spray", "PushYandereAway", "AttackReaction" };
-        static IEnumerable<MethodBase> TargetMethods() => names.Select(n => (MethodBase)AccessTools.Method(typeof(StudentScript), n)).Where(m => m != null);
-        static bool Prefix(StudentScript __instance, MethodBase __originalMethod)
-        {
-            var p = Plugin.Instance;
-            if(p == null) return true;
-            if(p.Ignore(__instance)) return false;
-            if(p.Toggles.Contains("witness") && new[] { "WitnessMurder", "UpdateWitnessedMurder", "DetermineWhatWasWitnessed", "PersonaReaction", "BecomeAlarmed" }.Contains(__originalMethod.Name)) return false;
-            if(p.Toggles.Contains("reports") && new[] { "BecomeAlarmed", "ChaseYandere", "PersonaReaction" }.Contains(__originalMethod.Name)) return false;
-            return true;
-        }
-    }
-    [HarmonyPatch]
-    static class HearingPatch
-    {
-        static IEnumerable<MethodBase> TargetMethods() => new[] { AccessTools.Method(typeof(AlarmDiscScript), "OnTriggerEnter"), AccessTools.Method(typeof(GiggleScript), "OnTriggerEnter") };
-        static bool Prefix(Collider other)
-        {
-            var p = Plugin.Instance;
-            if(p == null) return true;
-            if(p.Toggles.Contains("hearing") || p.Toggles.Contains("stupid")) return false;
-            var n = other.GetComponent<StudentScript>();
-            return n == null || !p.Ignore(n);
-        }
+        internal bool Activo(string id) => activos.Contains(id);
+        internal bool EstaBloqueado(string id) => bloqueos.ContainsKey(id);
+        internal bool Ignorando(int studentId, bool profesor, bool consejo) =>
+            activos.Contains("stupid") || ignorados.Contains(studentId) || (profesor && activos.Contains("teachers")) || (consejo && activos.Contains("council")) || (studentId == 1 && activos.Contains("senpai"));
     }
 }

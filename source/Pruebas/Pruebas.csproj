@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>YandereUltimate.Pruebas</AssemblyName>
+    <RootNamespace>YandereUltimate.Pruebas</RootNamespace>
+    <Version>1.1.0</Version>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <RollForward>Major</RollForward>
+    <!-- Código compartido escrito para net472 sin anotaciones de nulabilidad. -->
+    <NoWarn>$(NoWarn);CS8600;CS8602;CS8603;CS8604;CS8618;CS8625</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Lógica sin Unity ni WPF, compilada tal cual en el complemento y en la aplicación. -->
+    <Compile Include="..\Bridge\Protocolo.cs" Link="Vinculados\Protocolo.cs" />
+    <Compile Include="..\Desktop\Instalacion.cs" Link="Vinculados\Instalacion.cs" />
+    <Compile Include="..\Desktop\Compatibilidad.cs" Link="Vinculados\Compatibilidad.cs" />
+    <EmbeddedResource Include="..\..\compatibilidad.json" LogicalName="compatibilidad.json" />
+    <None Include="..\..\Loader\**\*" Link="Loader\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Inspector\Inspector.csproj" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" PrivateAssets="all" />
+    <PackageReference Include="Xunit.SkippableFact" Version="1.4.13" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.2" />
+  </ItemGroup>
+</Project>

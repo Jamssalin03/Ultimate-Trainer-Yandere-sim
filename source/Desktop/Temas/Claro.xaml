@@ -1,0 +1,21 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <SolidColorBrush x:Key="Fondo" Color="#F4F4F7"/>
+    <SolidColorBrush x:Key="Barra" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="Tarjeta" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="Borde" Color="#DDDDE5"/>
+    <SolidColorBrush x:Key="Texto" Color="#1C1D24"/>
+    <SolidColorBrush x:Key="TextoSuave" Color="#5C5F6E"/>
+    <SolidColorBrush x:Key="Acento" Color="#C8324C"/>
+    <SolidColorBrush x:Key="TextoAcento" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="Entrada" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="BordeEntrada" Color="#B9BBC8"/>
+    <SolidColorBrush x:Key="Boton" Color="#F7E6EA"/>
+    <SolidColorBrush x:Key="BotonHover" Color="#F0D2D9"/>
+    <SolidColorBrush x:Key="BordeBoton" Color="#D9A1AD"/>
+    <SolidColorBrush x:Key="Pestana" Color="#E9E9EF"/>
+    <SolidColorBrush x:Key="Exito" Color="#1E8C5A"/>
+    <SolidColorBrush x:Key="Advertencia" Color="#A86E00"/>
+    <SolidColorBrush x:Key="Peligro" Color="#B8233D"/>
+    <SolidColorBrush x:Key="Neutro" Color="#7C7F90"/>
+</ResourceDictionary>
