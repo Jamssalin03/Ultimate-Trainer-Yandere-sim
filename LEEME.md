@@ -1,145 +1,177 @@
-# Yandere Simulator Ultimate Trainer
+# Yandere Simulator Ultimate Trainer 1.1.0
 
-Aplicación real para Windows x64, en C# / WPF y .NET 8, con un complemento
-BepInEx / Harmony dentro del juego. La distribución incluye el ejecutable
-autónomo, el complemento compilado, el cargador y el código fuente completo.
+Aplicación para Windows x64, en C# / WPF y .NET 8, con un complemento
+BepInEx / Harmony dentro del juego. El paquete de Release incluye el ejecutable
+autónomo, el complemento compilado, el cargador y `SHA256SUMS.txt`; el código
+fuente completo está en este repositorio.
 
 ## Abrir y usar
 
-1. Ejecutá `YandereSimulatorUltimateTrainer.exe` en esta carpeta. No requiere
-   Visual Studio, compilar nada ni instalar .NET para usarlo.
-2. El complemento ya se instaló en la copia del juego inspeccionada. En otra
-   instalación, cerrá el juego, seleccioná su ejecutable con **Buscar instalación**
-   y elegí **Instalar complemento**.
-3. Abrí el juego. **Conectar** lee la versión y la escena; la conexión también
-   se intenta automáticamente cada 900 ms. Entrá a una partida.
-4. Usá el menú lateral. Cada estadística muestra el valor que devuelve el
-   juego; editá el campo y pulsá **Aplicar**. **Máximo** sólo llena el campo,
-   y requiere **Aplicar** para modificarlo.
+1. Ejecutá `YandereSimulatorUltimateTrainer.exe`. No requiere Visual Studio,
+   compilar nada ni instalar .NET.
+2. En **Ajustes**, comprobá la carpeta del juego (se detecta sola en las
+   ubicaciones habituales del launcher; si no, **Buscar…**). Con el juego
+   cerrado, pulsá **Instalar complemento** (o **Actualizar complemento** si
+   venís de la 1.0.0). Antes de instalar se respaldan tus partidas.
+3. Abrí el juego. La cabecera muestra siempre el estado:
+   - **Desconectado**: pulsaste Desconectar; **Conectar** (F5) vuelve a buscar.
+   - **Conectando…**: el juego está cerrado o el complemento aún no respondió
+     (se reintenta cada 900 ms; el motivo aparece debajo).
+   - **Conectado**: indica la build, si está verificada, el modo y la escena.
+   - **Incompatible**: ninguna función es compatible o el complemento
+     instalado es de otra versión; las modificaciones quedan bloqueadas.
+4. Usá las pestañas. Cada estadística muestra el valor que devuelve el juego;
+   editá el campo o el deslizador y pulsá **Aplicar** (o Enter). **Máximo**
+   sólo llena el campo.
 5. Para recursos, marcá **No disminuir** y aplicá una cantidad suficiente.
    Los botones 100, 500 y 1000 de puntos de información sí aplican la cantidad.
 6. Los interruptores cambian la función inmediatamente. Las opciones sin
    referencias válidas aparecen deshabilitadas, con el motivo.
-7. **Restaurar** recupera el valor registrado antes de editar esa estadística
-   en la escena actual. **Restaurar valores de sesión** desactiva los bloqueos,
-   descongela NPC y restaura los valores registrados que sigan disponibles.
+7. **Restaurar** recupera el valor registrado antes de editar esa estadística.
+   **Restaurar todo** (siempre visible, Ctrl+R) desactiva bloqueos e
+   interruptores, descongela NPC y restaura los valores registrados.
 
-El juego debe abrirse una vez con el complemento para que exista el canal
-local. El complemento fuerza la ejecución en segundo plano para que cambiar
-de ventana no interrumpa los comandos. No utiliza memoria de otros procesos.
+### Pestañas
 
-## Controles implementados
+| Pestaña | Contenido |
+|---|---|
+| Estadísticas | Reputación actual y permanente, puntos de estudio, materias (progreso y nivel), seducción, iluminación, insensibilidad, estado mental, salud y velocidades de la protagonista |
+| Recursos | Dinero y puntos de información (con bloqueo) |
+| NPC | Buscador, estado del personaje, ignorar a la protagonista, destino, teletransporte, amistad, reputación y velocidad; congelar por grupo |
+| Comportamiento | Personajes estúpidos, visión, audición, testigos, profesores, consejo, Senpai, reportes, estado mental al máximo, sin penalizaciones de reputación |
+| Tiempo | Congelar el reloj, hora, velocidad del reloj y atmósfera escolar |
+| Perfiles | Guardar, cargar, aplicar y eliminar perfiles locales |
+| Ajustes | Carpeta del juego, instalar/actualizar/desinstalar, respaldos, tema y compatibilidad |
+| Acerca de | Versión, repositorio, donaciones y avisos |
 
-- Reputación actual y persistente, seducción, iluminación e insensibilidad.
-- Puntos de estudio de la interfaz de clase y progreso / nivel individual
-  de Biología, Química, Lenguaje, Educación Física y Psicología.
-- Dinero y puntos de información, con edición, lectura, restauración y bloqueo.
-  Los puntos de información se deshabilitan en 1980.
-- Bloqueo de puntos durante `ServicesScript.Purchase`, manteniendo la compra
-  y restaurando el contador; actualización de las etiquetas de servicios.
-- «Personajes estúpidos» y controles separados de visión, audición, testigos,
-  profesores, consejo, Senpai e inicio de alarmas / reportes.
-- Congelación de todos, estudiantes comunes, profesores o consejo, con
-  conservación de animaciones, estado de movimiento y posición para restaurar.
-- NPC cargados con nombre, ID, alarma, persecución, posición y relaciones;
-  ignorar a Ayano por NPC, amistad y reputación personalizadas, velocidad al
-  caminar, teleport al destino del propio juego y Ayano cerca de un NPC.
-- Estado mental, bloqueo al máximo, velocidades al caminar / correr, salud
-  de combate y bloqueo de penalizaciones pendientes de reputación.
-- Congelación y velocidad del reloj, avance de hora y atmósfera escolar.
-- Perfiles locales, búsqueda, configuración automática, detección de cierre,
-  conexión, reconexión, instalación y desinstalación desde la ventana.
+### Atajos de teclado
 
-Implementado no significa validado de extremo a extremo: consultá
-`PRUEBAS.md` para distinguir los resultados efectivamente comprobados.
+| Tecla | Acción |
+|---|---|
+| Ctrl+1 … Ctrl+8 | Cambiar de pestaña |
+| Ctrl+R | Restaurar todo |
+| F5 / Ctrl+D | Conectar / desconectar |
+| Ctrl+F | Buscar personaje |
+| Ctrl+T | Tema oscuro / claro |
+| Enter | Aplicar el valor del campo |
+
+El complemento fuerza la ejecución en segundo plano (tras `YandereScript.Start`,
+que la desactiva) para que cambiar de ventana no interrumpa los comandos.
+No utiliza memoria de otros procesos.
 
 ## Compatibilidad y límites
 
-Sólo admite el ensamblado inspeccionado de la build 530 del 15/10/2026,
-Unity 6000.2.8f1, Mono x64. Ver `compatibilidad.json`. La huella SHA-256 se
-comprueba dentro del juego, y una huella diferente bloquea los cambios.
-No usa direcciones de memoria fijas.
+`compatibilidad.json` lista las builds verificadas (530 del 15/10/2026 y 532
+del 31/10/2026; Unity 6000.2.8f1, Mono x64). Si la huella SHA-256 de
+`Assembly-CSharp.dll` no figura, el complemento entra en **modo build no
+verificada**: comprueba con AccessTools cada referencia que declara
+`source/Comun/Catalogo.cs` para cada función y activa sólo las disponibles.
+Las desactivadas y su motivo se ven en **Ajustes › Compatibilidad** y en el
+registro de BepInEx. Si una función falla durante la partida, se desactiva y
+se registra con `LogWarning`. No usa direcciones de memoria fijas.
 
 - La disponibilidad de los valores depende de las clases cargadas en cada
   escena; no se muestran cifras simuladas cuando no existen referencias.
 - Los niveles de materias se limitan a 0–5 y el progreso a 0–100, conforme
   a los umbrales de `ClassScript`; ambos se sincronizan. Los puntos de estudio
   se aplican al contador de la sesión de clase, no a una clave de Registro.
-- La configuración se aplica a la escena actual; cambiar de escena recupera
-  referencias y descarta valores originales de objetos anteriores. Los
-  interruptores se conservan; un bloqueo numérico puede desactivarse si su
-  objetivo no está disponible en la nueva escena y deberá volver a aplicarse.
-  Las selecciones individuales de NPC se descartan al cambiar
-  de escena. No se garantiza restaurar consecuencias de eventos ya ejecutados.
+- Al cambiar de escena se descartan las referencias y los valores originales de
+  objetos de la escena anterior; los valores globales (reputación permanente,
+  seducción, iluminación, insensibilidad, atmósfera) y la amistad / reputación
+  de NPC se siguen pudiendo restaurar. Los interruptores se conservan; un
+  bloqueo cuyo objetivo no exista en la nueva escena se quita (con aviso).
 - «Personajes estúpidos» debe activarse antes de ser descubierta. Suprimir
   los métodos identificados no revierte una derrota ya iniciada, una llamada
   policial anterior ni todos los eventos especiales de una rival.
 - El botón de reportes bloquea las rutas identificadas en StudentScript;
   no representa una anulación global de todos los sistemas policiales.
 - Teletransportar a un destino usa `StudentScript.TeleportToDestination`.
-  Mover a Ayano comprueba disponibilidad y suelo con raycast; no es una
-  garantía de navegación perfecta en toda geometría de la escuela.
+  Mover a la protagonista comprueba disponibilidad y suelo con raycast; no es
+  una garantía de navegación perfecta en toda la geometría de la escuela.
 - El tiempo sólo puede avanzar dentro de 7:00–17:54. No se permite retroceder
   ni cambiar el día en vivo; restaurar una hora anterior también se rechaza.
-  Saltar horas puede omitir eventos. Restaurar la velocidad sí es reversible.
 - El bloqueo de recursos mantiene el mínimo aplicado; una compra requiere
   suficiente saldo inicial para que el juego la admita.
 - No se implementaron popularidad independiente, resistencia general,
-  atravesar obstáculos ni anulación general de derrotas. Se informa en la app.
+  atravesar obstáculos ni anulación general de derrotas.
 - El modo 1980 comparte las clases comprobadas, pero su funcionamiento jugable
-  completo debe verificarse por separado. No se asume que tenga Info-chan.
-- El cierre del entrenador solicita restauración. Si el cliente desaparece,
-  el puente restaura la sesión tras 12 segundos sin solicitudes, siempre que
-  el motor siga ejecutando callbacks. Si se cierra el juego abruptamente,
-  no hay garantía de ejecutar código de restauración.
+  completo debe verificarse por separado. Los puntos de información se
+  deshabilitan en 1980.
+- Al cerrar el entrenador o desconectar se pide restaurar todo. Si el cliente
+  desaparece, el complemento restaura la sesión tras 12 segundos sin
+  solicitudes, siempre que el motor siga ejecutando callbacks. Si el juego se
+  cierra abruptamente, no hay garantía de ejecutar código de restauración.
+
+## Seguridad del canal local
+
+- `endpoint.json` contiene el nombre del canal y un token aleatorio de 256 bits;
+  se crea con ACL restringida al usuario que ejecuta el juego. No lo compartas.
+- El token se compara en tiempo constante. Cada solicitud se valida contra una
+  lista blanca (`source/Comun/Definiciones.cs`): operación, identificador,
+  campos permitidos, tipos estrictos y rangos por estadística.
+- El canal rechaza clientes remotos y admite una sola instancia.
+- Una solicitud que vence antes de que el juego la procese nunca se ejecuta; una
+  que ya empezó nunca se informa como cancelada (estado atómico).
 
 ## Respaldos, datos y desinstalación
 
 Los ajustes, perfiles, errores y respaldos están en
 `%LOCALAPPDATA%\YandereUltimate`:
 
-- `config.json`: campos, perfiles y ruta de instalación.
-- `Respaldos`: PlayerPrefs exportado a `.reg`, ensamblado original y versión,
-  creados antes de instalar. Importar el `.reg` restaura las preferencias de
-  aquella fecha y puede sobrescribir avances posteriores: usalo deliberadamente
-  y con el juego cerrado.
-- `Cambios`: instantáneas de valores previos a cada comando de modificación
-  en la versión final del complemento; no equivalen a una copia completa de
-  todos los archivos de partida.
-- `errores.log`: errores de la aplicación. El complemento también registra
-  errores en `BepInEx\LogOutput.log`, dentro del juego.
-- `endpoint.json`: credenciales efímeras de comunicación. Está restringido
-  mediante permisos de Windows al usuario que ejecuta el juego. No compartirlo.
+- `config.json`: campos, perfiles, tema y ruta de instalación.
+- `Respaldos`: antes de instalar (y con **Ajustes › Respaldar partidas**) se
+  copian `SaveData` y `SaveFiles` del juego, PlayerPrefs exportado a `.reg`
+  (si existe) y el ensamblado original. Importar el `.reg` restaura las
+  preferencias de aquella fecha y puede sobrescribir avances posteriores:
+  usalo deliberadamente y con el juego cerrado.
+- `Cambios`: instantáneas de valores previos a los comandos de modificación.
+  Como máximo una por segundo y las 50 más recientes; se escriben en un hilo
+  propio del complemento. No equivalen a una copia completa de las partidas.
+- `errores.log`: errores de la aplicación. El complemento registra en
+  `BepInEx\LogOutput.log`, dentro del juego.
 
-El instalador añade archivos de BepInEx y `winhttp.dll` / configuración de
-Doorstop. Conserva un manifiesto con hashes de cada archivo añadido. No
-reemplaza el ensamblado original y rechaza colisiones con otros archivos.
+El instalador añade BepInEx 5.4.23.5 y `winhttp.dll` / configuración de
+Doorstop, o, si ya hay un **BepInEx 5** (con otros mods), pregunta y agrega
+sólo el complemento sin sobrescribir nada. Rechaza otros cargadores. Si la
+copia falla, se revierte. El manifiesto `YandereUltimate.install.json` guarda
+el hash de cada archivo añadido y las carpetas creadas.
 
 Para desinstalar, cerrá el juego y elegí **Desinstalar complemento**. Se
-retiran únicamente archivos añadidos que todavía coincidan con sus hashes.
-Si alguno cambió, se conserva y se informa el conflicto. Se mantienen los
-respaldos, archivos generados de configuración y registros para recuperación.
+retiran únicamente los archivos añadidos que todavía coincidan con sus hashes
+y las carpetas propias que quedaron vacías. Si algún archivo cambió, no se
+borra nada y se informa el conflicto. Se conservan otros mods, los archivos
+generados por BepInEx (registros, configuración) y los respaldos.
 La app no solicita administrador ni cambia antivirus o ajustes de seguridad.
 
 ## Código y ampliación
 
 Abrí `source\YandereUltimate.sln` con Visual Studio y soporte de escritorio
-.NET. Se necesita SDK .NET 8 o posterior y acceso NuGet para restaurar las
-referencias de compilación de .NET Framework 4.7.2 del complemento.
+.NET, o usá el SDK .NET 8. Se necesita acceso a NuGet.
 
-`Desktop` implementa WPF, perfiles, instalación y el cliente de canal local.
-`Bridge` implementa el servidor, cola al hilo principal, acceso tipado a las
-clases del juego, validaciones y parches Harmony. `Native.cs` proporciona
-permisos Windows y canal local sin APIs incompletas de Unity Mono.
+| Proyecto | Función |
+|---|---|
+| `Desktop` | WPF: interfaz, perfiles, instalación y cliente del canal local |
+| `Bridge` | Complemento: servidor del canal, cola al hilo principal, acceso al juego (`Juego.cs`), parches (`Parches.cs`), compatibilidad (`Compatibilidad.cs`) y Win32 (`Native.cs`) |
+| `Comun` | Lista blanca del protocolo, catálogo de funciones y sondeo de requisitos (compartido) |
+| `Inspector` | Informe de referencias del complemento contra una build (Mono.Cecil) |
+| `Pruebas` | Pruebas automáticas (xUnit); las que usan el juego leen `YS_JUEGO` y `YS_PUENTE` |
+| `Simulador` | Proceso que imita al juego con el complemento, para probar la interfaz sin el juego. No se distribuye |
 
-Para compilar, ejecutá `Compilar.ps1`; admite `-Juego "ruta"`. También:
+Para compilar, ejecutá `Compilar.ps1` (detecta el juego o admite
+`-Juego "ruta"`; `-Paquete` genera el `.zip`). También:
 
 ```powershell
 dotnet build .\source\YandereUltimate.sln -c Release -p:GameDir="C:\ruta\al\juego"
 dotnet publish .\source\Desktop\Desktop.csproj -c Release -o .\publicado
 ```
 
-Los intermedios se guardan en `%TEMP%\ys-ultimate\build`. El cargador de
-compilación se toma de `Loader`, junto al código fuente. Para nuevas builds,
-primero hay que verificar clases y métodos, ajustar referencias y revisar
-explícitamente la huella admitida; no basta con saltarse la comprobación.
+### Agregar una build nueva
+
+1. Actualizá el juego con el launcher.
+2. Ejecutá `Compilar.ps1 -Juego "ruta"`. El inspector imprime el SHA-256 y cada
+   referencia del complemento al juego; si alguna falta, la compilación o el
+   informe lo indican.
+3. Corregí `Juego.cs` / `Parches.cs` y los requisitos de `Comun/Catalogo.cs`.
+4. Probá en el juego y agregá la build a `builds_conocidas` en
+   `compatibilidad.json` (build, fecha, Unity, SHA-256). No basta con agregar
+   la huella sin revisar.
