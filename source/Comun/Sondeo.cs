@@ -1,3 +1,4 @@
+#nullable disable
 // Comprobación de requisitos de cada función contra el ensamblado del juego cargado.
 // Compartido: el complemento usa un resolutor basado en AccessTools; las pruebas y el inspector,
 // uno basado en reflexión de metadatos. Sólo depende de System.Reflection.

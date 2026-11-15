@@ -1,3 +1,4 @@
+#nullable disable
 // Archivo compartido por el complemento (net472), la aplicación de escritorio (net8) y las pruebas.
 // Sin dependencias: sólo tipos de System. Es la lista blanca del protocolo local.
 using System;

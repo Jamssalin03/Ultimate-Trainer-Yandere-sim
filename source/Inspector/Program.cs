@@ -184,9 +184,12 @@ namespace YandereUltimate.Inspector
         }
 
         /// <summary>Evalúa el catálogo como lo hace el complemento, pero sobre metadatos (sin ejecutar Unity).</summary>
-        public static List<EstadoFuncion> EvaluarCatalogo(string managed)
+        /// <param name="reemplazos">Rutas de DLL que reemplazan a las homónimas de <paramref name="managed"/> (para pruebas).</param>
+        public static List<EstadoFuncion> EvaluarCatalogo(string managed, params string[] reemplazos)
         {
-            var archivos = Directory.GetFiles(managed, "*.dll").ToList();
+            var archivos = Directory.GetFiles(managed, "*.dll")
+                .Where(f => !reemplazos.Any(r => Path.GetFileName(r).Equals(Path.GetFileName(f), StringComparison.OrdinalIgnoreCase)))
+                .Concat(reemplazos).ToList();
             var nucleo = archivos.FirstOrDefault(f => Path.GetFileName(f).Equals("mscorlib.dll", StringComparison.OrdinalIgnoreCase)) ?? typeof(object).Assembly.Location;
             if (!archivos.Contains(nucleo)) archivos.Add(nucleo);
             using var contexto = new MetadataLoadContext(new PathAssemblyResolver(archivos), Path.GetFileNameWithoutExtension(nucleo));

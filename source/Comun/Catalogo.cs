@@ -1,3 +1,4 @@
+#nullable disable
 // Catálogo de funciones y de las referencias del juego que necesita cada una.
 // Cada referencia del IL del complemento a Assembly-CSharp debe figurar aquí (lo comprueban las pruebas
 // y el inspector); también las que se usan por reflexión o por nombre (parches Harmony, UpdateBars).
