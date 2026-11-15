@@ -1,0 +1,76 @@
+# Publica el Release v1.1.0 compilado en Windows a partir de main (commit del merge del PR #1).
+# Los ensamblados del juego se toman del paquete oficial sólo para compilar; no se redistribuyen.
+name: Publicar Release 1.1.0
+
+on:
+  push:
+    branches: [release/1.1.0]
+    paths: ['.github/workflows/publicar-release.yml', '.github/release/**']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  VERSION: '1.1.0'
+  DESTINO: '77c5f189b06354598a7c873a6407b9f1595951d1'   # main tras el merge del PR #1
+  SHA_ESPERADO: 'E06B2209AA75DDA4EC6EE15E927566FD02F91B1BBC01A34908082D559CEB4F2C'   # build 532
+
+jobs:
+  publicar:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - name: Código de main (commit del merge)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DESTINO }}
+
+      - name: Scripts de publicación
+        uses: actions/checkout@v4
+        with:
+          path: ci
+          sparse-checkout: .github
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Release ya publicado
+        id: existe
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "v$env:VERSION" --repo $env:GITHUB_REPOSITORY *> $null
+          "si=$([int]($LASTEXITCODE -eq 0))" >> $env:GITHUB_OUTPUT
+
+      - name: Ensamblados del juego (sólo Managed, por rangos HTTP)
+        if: steps.existe.outputs.si == '0'
+        shell: pwsh
+        run: python ci/.github/release/extraer_managed.py https://yanderesimulator.com/dl/latest.zip "$env:RUNNER_TEMP\juego"
+
+      - name: Verificar que es la build 532
+        if: steps.existe.outputs.si == '0'
+        shell: pwsh
+        run: |
+          $h = (Get-FileHash "$env:RUNNER_TEMP\juego\YandereSimulator_Data\Managed\Assembly-CSharp.dll" -Algorithm SHA256).Hash
+          Write-Host "SHA-256 de Assembly-CSharp.dll: $h"
+          if ($h -ne $env:SHA_ESPERADO) { throw "El servidor ya ofrece otra build; no se publica sin revisarla." }
+
+      - name: Compilar, probar y empaquetar
+        if: steps.existe.outputs.si == '0'
+        shell: pwsh
+        run: .\Compilar.ps1 -Juego "$env:RUNNER_TEMP\juego" -Paquete
+
+      - name: Publicar Release
+        if: steps.existe.outputs.si == '0'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $zip = "dist\YandereSimulatorUltimateTrainer-$env:VERSION.zip"
+          $sha = (Get-FileHash $zip -Algorithm SHA256).Hash
+          (Get-Content ci\.github\release\notas-$env:VERSION.md -Raw -Encoding utf8).Replace('{{SHA256_ZIP}}', $sha) | Set-Content notas.md -Encoding utf8
+          gh release create "v$env:VERSION" $zip --repo $env:GITHUB_REPOSITORY --target $env:DESTINO --title "Yandere Simulator Ultimate Trainer $env:VERSION" --notes-file notas.md
+          Write-Host "Publicado v$env:VERSION · SHA-256 del .zip: $sha"
