@@ -1,13 +1,28 @@
 {
   "nombre": "Yandere Simulator Ultimate Trainer",
-  "version": "1.0.0",
-  "build": "530",
-  "fecha_de_build": "2026-10-15",
-  "unity": "6000.2.8f1",
-  "arquitectura": "x64",
-  "ejecucion": "Mono",
-  "sha256_Assembly_CSharp": "62926A9CC29156037C340E7BD177D88D760D03618FCDFF0C2CD66CCAB78CED09",
+  "version": "1.1.0",
+  "protocolo": 2,
+  "repositorio": "https://github.com/Jamssalin03/Ultimate-Trainer-Yandere-sim",
+  "donaciones": "",
   "bepinex": "5.4.23.5",
   "configuracion_de_usuario": "%LOCALAPPDATA%\\YandereUltimate\\config.json",
-  "red": "Canal local autenticado. Sin servicios externos."
+  "red": "Canal local autenticado. Sin servicios externos.",
+  "builds_conocidas": [
+    {
+      "build": "530",
+      "fecha": "2026-10-15",
+      "unity": "6000.2.8f1",
+      "arquitectura": "x64",
+      "ejecucion": "Mono",
+      "sha256_Assembly_CSharp": "62926A9CC29156037C340E7BD177D88D760D03618FCDFF0C2CD66CCAB78CED09"
+    },
+    {
+      "build": "532",
+      "fecha": "2026-10-31",
+      "unity": "6000.2.8f1",
+      "arquitectura": "x64",
+      "ejecucion": "Mono",
+      "sha256_Assembly_CSharp": "E06B2209AA75DDA4EC6EE15E927566FD02F91B1BBC01A34908082D559CEB4F2C"
+    }
+  ]
 }
